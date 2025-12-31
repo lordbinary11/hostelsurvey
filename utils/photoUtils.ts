@@ -1,5 +1,4 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library';
 import { Survey } from '../types/survey';
 
 const photosDir = `${FileSystem.documentDirectory}photos/`;
@@ -37,12 +36,7 @@ export const saveStampedPhoto = async (stampedUri: string): Promise<string> => {
     to: newPath,
   });
   
-  // Request permission to save to media library
-  const { status } = await MediaLibrary.requestPermissionsAsync();
-  if (status === 'granted') {
-    await MediaLibrary.createAssetAsync(newPath);
-  }
-  
+  // Don't save to gallery - only save to app's internal storage
   return newPath;
 };
 
@@ -54,12 +48,7 @@ export const stampPhoto = async (
 ): Promise<string> => {
   const savedPath = await savePhotoToDevice(photoUri);
   
-  // Request permission to save to media library
-  const { status } = await MediaLibrary.requestPermissionsAsync();
-  if (status === 'granted') {
-    await MediaLibrary.createAssetAsync(savedPath);
-  }
-  
+  // Don't save to gallery - only save to app's internal storage
   return savedPath;
 };
 

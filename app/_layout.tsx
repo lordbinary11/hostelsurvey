@@ -1,6 +1,12 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
+import { Buffer } from 'buffer';
 import { initDatabase } from '../db/database';
+
+// Polyfill Buffer for React Native (needed for ExcelJS)
+if (typeof global !== 'undefined') {
+  (global as any).Buffer = Buffer;
+}
 
 export default function RootLayout() {
   useEffect(() => {

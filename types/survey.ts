@@ -12,7 +12,7 @@ export interface Survey {
   managerName: string;
   managerPhone: string;
   hasWifi: boolean;
-  completionStatus: 'Completed' | 'Uncompleted';
+  completionStatus: 'Running' | 'Uncompleted' | 'Completed';
   createdAt?: string;
 }
 

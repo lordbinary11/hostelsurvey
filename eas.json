@@ -15,6 +15,12 @@
       "autoIncrement": true,
       "env": {},
       "node": "20.5.1"
+    },
+    "apk": {
+      "android": {
+        "buildType": "apk"
+      },
+      "distribution": "internal"
     }
   },
   "submit": {

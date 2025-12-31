@@ -27,7 +27,7 @@ export default function DetailsScreen() {
   const [managerName, setManagerName] = useState('');
   const [managerPhone, setManagerPhone] = useState('');
   const [hasWifi, setHasWifi] = useState(false);
-  const [completionStatus, setCompletionStatus] = useState('');
+  const [hostelStatus, setHostelStatus] = useState(true); // false = Uncompleted, true = Running (default: Running)
   const [isSaving, setIsSaving] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -75,10 +75,7 @@ export default function DetailsScreen() {
       return;
     }
 
-    if (!completionStatus.trim()) {
-      showAlert('Error', 'Please enter the completion status');
-      return;
-    }
+    // Hostel status is always set (no validation needed for toggle)
 
     setIsSaving(true);
 
@@ -96,7 +93,7 @@ export default function DetailsScreen() {
         managerName: managerName.trim(),
         managerPhone: managerPhone.trim(),
         hasWifi,
-        completionStatus: completionStatus.trim() as 'Completed' | 'Uncompleted',
+        completionStatus: (hostelStatus ? 'Running' : 'Uncompleted') as 'Running' | 'Uncompleted' | 'Completed',
       };
 
       await insertSurvey(survey);
@@ -257,7 +254,7 @@ export default function DetailsScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <View style={styles.switchContainer}>
+            <View style={styles.switchContainerRow}>
               <View style={styles.labelRow}>
                 <Ionicons name="wifi-outline" size={18} color="#666" />
                 <Text style={styles.label}>Existing WiFi?</Text>
@@ -273,19 +270,26 @@ export default function DetailsScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Ionicons name="checkmark-circle-outline" size={18} color="#666" />
-              <Text style={styles.label}>Completion Status *</Text>
-            </View>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Completed, Uncompleted"
-                placeholderTextColor="#999"
-                value={completionStatus}
-                onChangeText={setCompletionStatus}
-                autoCapitalize="words"
-              />
+            <View style={styles.switchContainer}>
+              <View style={styles.labelRow}>
+                <Ionicons name="flag-outline" size={18} color="#666" />
+                <Text style={styles.label}>Hostel Status</Text>
+              </View>
+              <View style={styles.toggleContainer}>
+                <Text style={[styles.toggleLabel, !hostelStatus && styles.toggleLabelActive]}>
+                  Uncompleted
+                </Text>
+                <Switch
+                  value={hostelStatus}
+                  onValueChange={setHostelStatus}
+                  trackColor={{ false: '#d0d0d0', true: '#4CAF50' }}
+                  thumbColor={hostelStatus ? '#fff' : '#f4f3f4'}
+                  ios_backgroundColor="#d0d0d0"
+                />
+                <Text style={[styles.toggleLabel, hostelStatus && styles.toggleLabelActive]}>
+                  Running
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -404,9 +408,6 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   switchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 12,
@@ -415,6 +416,37 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
+  },
+  switchContainerRow: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 12,
+  },
+  toggleLabel: {
+    fontSize: 15,
+    color: '#999',
+    fontWeight: '500',
+    minWidth: 90,
+    textAlign: 'center',
+  },
+  toggleLabelActive: {
+    color: '#2196F3',
+    fontWeight: '700',
   },
   saveButton: {
     backgroundColor: '#2196F3',

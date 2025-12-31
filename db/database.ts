@@ -97,3 +97,9 @@ export const getSurveyById = async (id: number): Promise<Survey | null> => {
   };
 };
 
+export const clearAllSurveys = async (): Promise<void> => {
+  const db = await getDatabase();
+  
+  await db.runAsync(`DELETE FROM surveys`);
+};
+

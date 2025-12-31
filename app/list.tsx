@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { getAllSurveys, deleteSurvey } from '../db/database';
+import { getAllSurveys, deleteSurvey, clearAllSurveys } from '../db/database';
 import { Survey } from '../types/survey';
 import { exportSurveysToExcel, shareExcelFile } from '../utils/excelExport';
 import { CustomAlert } from '../components/CustomAlert';
@@ -100,6 +100,53 @@ export default function ListScreen() {
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const handleClearAll = () => {
+    if (surveys.length === 0) {
+      showAlert('No Data', 'There are no surveys to clear');
+      return;
+    }
+
+    showAlert(
+      'Clear All Surveys',
+      `Are you sure you want to delete all ${surveys.length} survey(s)? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => setAlertVisible(false),
+        },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            setAlertVisible(false);
+            try {
+              // Delete all photos first
+              const { deletePhoto } = await import('../utils/photoUtils');
+              for (const survey of surveys) {
+                if (survey.photoPath) {
+                  try {
+                    await deletePhoto(survey.photoPath);
+                  } catch (error) {
+                    console.error(`Error deleting photo for ${survey.hostelName}:`, error);
+                  }
+                }
+              }
+              
+              // Clear all surveys from database
+              await clearAllSurveys();
+              await loadSurveys();
+              showAlert('Success', 'All surveys have been cleared successfully');
+            } catch (error) {
+              console.error('Error clearing surveys:', error);
+              showAlert('Error', 'Failed to clear surveys. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleImagePress = (photoPath: string) => {
@@ -213,21 +260,32 @@ export default function ListScreen() {
             {surveys.length} {surveys.length === 1 ? 'Survey' : 'Surveys'}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.exportButton, isExporting && styles.exportButtonDisabled]}
-          onPress={handleExport}
-          disabled={isExporting || surveys.length === 0}
-          activeOpacity={0.7}
-        >
-          {isExporting ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <>
-              <Ionicons name="download-outline" size={18} color="#fff" />
-              <Text style={styles.exportButtonText}>Export</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={[styles.clearButton, surveys.length === 0 && styles.buttonDisabled]}
+            onPress={handleClearAll}
+            disabled={surveys.length === 0}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={18} color="#fff" />
+            <Text style={styles.clearButtonText}>Clear All</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.exportButton, isExporting && styles.exportButtonDisabled]}
+            onPress={handleExport}
+            disabled={isExporting || surveys.length === 0}
+            activeOpacity={0.7}
+          >
+            {isExporting ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="download-outline" size={18} color="#fff" />
+                <Text style={styles.exportButtonText}>Export to Excel</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {surveys.length === 0 ? (
@@ -290,10 +348,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
     padding: 20,
+    gap: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
@@ -302,6 +359,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
   },
   headerLeft: {
     flexDirection: 'row',
@@ -334,6 +396,35 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  clearButton: {
+    backgroundColor: '#f44336',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    shadowColor: '#f44336',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  clearButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   listContent: {
     padding: 16,
