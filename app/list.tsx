@@ -14,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { getAllSurveys, deleteSurvey, clearAllSurveys } from '../db/database';
 import { Survey } from '../types/survey';
 import { exportSurveysToExcel, shareExcelFile } from '../utils/excelExport';
+import { exportSurveysFromSupabase, shareExcelFile as shareSupabaseExcelFile } from '../utils/supabaseExport';
+import { uploadSurveysToSupabase, isSupabaseConfigured } from '../services/supabaseService';
 import { CustomAlert } from '../components/CustomAlert';
 import { ImageViewer } from '../components/ImageViewer';
 
@@ -21,6 +23,7 @@ export default function ListScreen() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
     title: '',
@@ -97,6 +100,66 @@ export default function ListScreen() {
     } catch (error) {
       console.error('Error exporting surveys:', error);
       showAlert('Error', 'Failed to export surveys. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleUploadToSupabase = async () => {
+    if (surveys.length === 0) {
+      showAlert('No Data', 'There are no surveys to upload');
+      return;
+    }
+
+    if (!isSupabaseConfigured()) {
+      showAlert(
+        'Configuration Required',
+        'Please configure Supabase credentials in config/supabase.ts before uploading.'
+      );
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const result = await uploadSurveysToSupabase(surveys);
+      if (result.failed === 0) {
+        showAlert(
+          'Success',
+          `All ${result.success} survey(s) uploaded to Supabase successfully!`
+        );
+      } else {
+        showAlert(
+          'Partial Success',
+          `${result.success} survey(s) uploaded, ${result.failed} failed.\n\nErrors:\n${result.errors.slice(0, 5).join('\n')}${result.errors.length > 5 ? '\n...' : ''}`
+        );
+      }
+    } catch (error: any) {
+      console.error('Error uploading to Supabase:', error);
+      showAlert('Error', `Failed to upload surveys: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleExportFromSupabase = async () => {
+    if (!isSupabaseConfigured()) {
+      showAlert(
+        'Configuration Required',
+        'Please configure Supabase credentials in config/supabase.ts before exporting.'
+      );
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const fileUri = await exportSurveysFromSupabase();
+      await shareSupabaseExcelFile(fileUri);
+      showAlert('Success', 'Excel file exported from Supabase with images!');
+    } catch (error: any) {
+      console.error('Error exporting from Supabase:', error);
+      showAlert('Error', `Failed to export from Supabase: ${error.message || 'Unknown error'}`);
     } finally {
       setIsExporting(false);
     }
@@ -270,6 +333,23 @@ export default function ListScreen() {
             <Ionicons name="trash-outline" size={18} color="#fff" />
             <Text style={styles.clearButtonText}>Clear All</Text>
           </TouchableOpacity>
+          {isSupabaseConfigured() && (
+            <TouchableOpacity
+              style={[styles.uploadButton, (isUploading || surveys.length === 0) && styles.buttonDisabled]}
+              onPress={handleUploadToSupabase}
+              disabled={isUploading || surveys.length === 0}
+              activeOpacity={0.7}
+            >
+              {isUploading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
+                  <Text style={styles.uploadButtonText}>Upload to Supabase</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.exportButton, isExporting && styles.exportButtonDisabled]}
             onPress={handleExport}
@@ -281,10 +361,27 @@ export default function ListScreen() {
             ) : (
               <>
                 <Ionicons name="download-outline" size={18} color="#fff" />
-                <Text style={styles.exportButtonText}>Export to Excel</Text>
+                <Text style={styles.exportButtonText}>Export Local</Text>
               </>
             )}
           </TouchableOpacity>
+          {isSupabaseConfigured() && (
+            <TouchableOpacity
+              style={[styles.exportButton, isExporting && styles.exportButtonDisabled]}
+              onPress={handleExportFromSupabase}
+              disabled={isExporting}
+              activeOpacity={0.7}
+            >
+              {isExporting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="cloud-download-outline" size={18} color="#fff" />
+                  <Text style={styles.exportButtonText}>Export from Supabase</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -419,6 +516,25 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   clearButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  uploadButton: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  uploadButtonText: {
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
