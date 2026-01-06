@@ -16,7 +16,7 @@ import { CustomAlert } from '../components/CustomAlert';
 export default function CameraScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [permission, requestPermission] = useCameraPermissions();
-  const [locationPermission, setLocationPermission] = useState<boolean>(false);
+  const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [alertVisible, setAlertVisible] = useState(false);
@@ -36,15 +36,50 @@ export default function CameraScreen() {
   };
 
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      setLocationPermission(status === 'granted');
-      
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({});
-        setLocation(loc);
+    let subscriber: Location.LocationSubscription | null = null;
+
+    const initLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setLocationPermission(false);
+          showAlert(
+            'Location Permission Required',
+            'This app needs location permission to tag photos with GPS coordinates. Please enable location permissions in your device settings.'
+          );
+          return;
+        }
+
+        setLocationPermission(true);
+
+        // Get current position once
+        const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+        setLocation(current);
+
+        // Start watching for real-time updates
+        subscriber = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Highest,
+            timeInterval: 1000,
+            distanceInterval: 1,
+          },
+          (pos) => {
+            setLocation(pos);
+          }
+        );
+      } catch (error) {
+        console.error('Error initializing location:', error);
+        setLocationPermission(false);
       }
-    })();
+    };
+
+    initLocation();
+
+    return () => {
+      if (subscriber) {
+        subscriber.remove();
+      }
+    };
   }, []);
 
   if (!permission) {
@@ -72,8 +107,9 @@ export default function CameraScreen() {
   const handleCapture = async () => {
     if (!cameraRef.current || isCapturing) return;
 
+    // With mock location, this should never happen, but keep a safety check
     if (!location) {
-      showAlert('Error', 'Location not available. Please enable location services.');
+      showAlert('Error', 'Location not available. Please try again.');
       return;
     }
 

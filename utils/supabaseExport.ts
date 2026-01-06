@@ -1,8 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import ExcelJS from 'exceljs';
-import { Buffer } from 'buffer';
-import { getSurveysFromSupabase, downloadImageFromSupabase, SupabaseSurvey } from '../services/supabaseService';
+import * as XLSX from 'xlsx';
+import { getSurveysFromSupabase, SupabaseSurvey } from '../services/supabaseService';
 
 export const exportSurveysFromSupabase = async (): Promise<string> => {
   // Fetch surveys from Supabase
@@ -12,137 +11,94 @@ export const exportSurveysFromSupabase = async (): Promise<string> => {
     throw new Error('No surveys found in Supabase');
   }
 
-  // Create a new workbook
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Surveys');
-
-  // Set column headers
-  worksheet.columns = [
-    { header: 'Hostel Name', key: 'hostelName', width: 20 },
-    { header: 'Date', key: 'date', width: 12 },
-    { header: 'Time', key: 'time', width: 10 },
-    { header: 'Latitude', key: 'latitude', width: 15 },
-    { header: 'Longitude', key: 'longitude', width: 15 },
-    { header: 'Number of Floors', key: 'numberOfFloors', width: 15 },
-    { header: 'Number of Rooms', key: 'numberOfRooms', width: 15 },
-    { header: 'Number of Residents', key: 'numberOfResidents', width: 18 },
-    { header: 'Manager Name', key: 'managerName', width: 20 },
-    { header: 'Manager Phone', key: 'managerPhone', width: 15 },
-    { header: 'Has WiFi', key: 'hasWifi', width: 10 },
-    { header: 'Completion Status', key: 'completionStatus', width: 18 },
-    { header: 'Photo', key: 'photo', width: 20 },
-    { header: 'Created At', key: 'createdAt', width: 20 },
-  ];
-
-  // Style the header row
-  const headerRow = worksheet.getRow(1);
-  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  headerRow.fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF2196F3' },
-  };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-  headerRow.height = 25;
-
-  // Process each survey and add images
-  const MAX_IMAGES = 100; // Limit to prevent issues
-  let imageCount = 0;
-
-  for (let i = 0; i < surveys.length; i++) {
-    const survey = surveys[i];
-    const rowNumber = i + 2; // +2 because row 1 is header
-
-    // Add data row
-    worksheet.addRow({
-      hostelName: survey.hostelName,
-      date: survey.date,
-      time: survey.time,
-      latitude: survey.latitude,
-      longitude: survey.longitude,
-      numberOfFloors: survey.numberOfFloors,
-      numberOfRooms: survey.numberOfRooms,
-      numberOfResidents: survey.numberOfResidents,
-      managerName: survey.managerName,
-      managerPhone: survey.managerPhone,
-      hasWifi: survey.hasWifi ? 'Yes' : 'No',
-      completionStatus: survey.completionStatus,
-      photo: survey.photo_url ? (imageCount < MAX_IMAGES ? 'Yes' : 'Skipped') : 'N/A',
-      createdAt: survey.createdAt || survey.created_at || '',
-    });
-
-    // Embed image if available and under limit
-    if (survey.photo_url && imageCount < MAX_IMAGES) {
-      try {
-        // Download image from Supabase
-        const imageBase64 = await downloadImageFromSupabase(survey.photo_url);
-
-        // Convert base64 to buffer
-        const imageBuffer = Buffer.from(imageBase64, 'base64') as any;
-
-        // Add image to workbook
-        const imageId = workbook.addImage({
-          buffer: imageBuffer,
-          extension: 'jpeg',
-        });
-
-        // Get the photo column (column M, index 13)
-        const photoColNumber = 13;
-
-        // Insert image in the photo column
-        worksheet.addImage(imageId, {
-          tl: { col: photoColNumber - 1, row: rowNumber - 1 },
-          ext: { width: 150, height: 150 },
-        });
-
-        // Adjust row height to accommodate image
-        worksheet.getRow(rowNumber).height = 120;
-
-        imageCount++;
-
-        // Add a small delay every 10 images to prevent issues
-        if (imageCount % 10 === 0) {
-          await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
-        }
-      } catch (error) {
-        console.error(`Error embedding image for ${survey.hostelName}:`, error);
-        // Continue without image
-      }
-    }
+  // Prepare data for Excel export with image links
+  // Debug: log first survey to see structure
+  if (surveys.length > 0) {
+    console.log('Sample survey data:', JSON.stringify(surveys[0], null, 2));
+    console.log('Photo URL in first survey:', (surveys[0] as any).photo_url);
   }
 
-  // Auto-fit columns (except photo column which has images)
-  worksheet.columns.forEach((column, index) => {
-    if (index !== 12) {
-      // Not the photo column
-      const maxLength = Math.max(
-        column.header?.length || 10,
-        ...surveys.map((s) => {
-          const value = (s as any)[column.key || ''];
-          return value ? String(value).length : 0;
-        })
-      );
-      column.width = Math.max(maxLength + 2, 10);
-    }
+  const worksheetData = surveys.map((survey) => {
+    // Access photo_url - it's part of SupabaseSurvey interface
+    const photoUrl = (survey as SupabaseSurvey).photo_url;
+    console.log(`Survey "${survey.hostelName}" - photo_url:`, photoUrl);
+    
+    return {
+      'Hostel Name': survey.hostelName,
+      'Date': survey.date,
+      'Time': survey.time,
+      'Latitude': survey.latitude,
+      'Longitude': survey.longitude,
+      'Number of Floors': survey.numberOfFloors,
+      'Number of Rooms': survey.numberOfRooms,
+      'Number of Residents': survey.numberOfResidents,
+      'Manager Name': survey.managerName,
+      'Manager Phone': survey.managerPhone,
+      'Has WiFi': survey.hasWifi ? 'Yes' : 'No',
+      'Completion Status': survey.completionStatus,
+      'Photo Link': photoUrl && photoUrl.length > 0 ? photoUrl : 'N/A',
+      'Created At': survey.createdAt || '',
+    };
   });
 
-  // Generate Excel file buffer
-  const buffer = await workbook.xlsx.writeBuffer();
+  // Create a new workbook and worksheet
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(worksheetData);
 
-  // Convert buffer to base64
-  let base64: string;
-  if (buffer instanceof ArrayBuffer) {
-    const uint8Array = new Uint8Array(buffer);
-    base64 = Buffer.from(uint8Array).toString('base64');
-  } else {
-    base64 = Buffer.from(buffer as any).toString('base64');
+  // Set column widths
+  const columnWidths = [
+    { wch: 20 }, // Hostel Name
+    { wch: 12 }, // Date
+    { wch: 10 }, // Time
+    { wch: 15 }, // Latitude
+    { wch: 15 }, // Longitude
+    { wch: 15 }, // Number of Floors
+    { wch: 15 }, // Number of Rooms
+    { wch: 18 }, // Number of Residents
+    { wch: 20 }, // Manager Name
+    { wch: 15 }, // Manager Phone
+    { wch: 10 }, // Has WiFi
+    { wch: 18 }, // Completion Status
+    { wch: 50 }, // Photo Link (wider for URLs)
+    { wch: 20 }, // Created At
+  ];
+  worksheet['!cols'] = columnWidths;
+
+  // Add hyperlinks to photo URLs (Excel will make them clickable)
+  // XLSX doesn't directly support hyperlinks in the same way, but the URLs will be clickable
+  // We can enhance this by adding a formula that creates a hyperlink
+  const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+  
+  // Find the Photo Link column (column M, index 12)
+  const photoLinkCol = 12; // 0-based index for column M
+  
+  for (let row = 1; row <= range.e.r; row++) {
+    const cellAddress = XLSX.utils.encode_cell({ r: row, c: photoLinkCol });
+    const cell = worksheet[cellAddress];
+    
+    if (cell && cell.v && cell.v !== 'N/A' && typeof cell.v === 'string' && cell.v.startsWith('http')) {
+      // Add hyperlink formula (Excel formula: =HYPERLINK(url, "View Image"))
+      worksheet[cellAddress] = {
+        f: `HYPERLINK("${cell.v}","View Image")`,
+        t: 'n', // formula type
+      };
+    }
   }
+
+  // Add worksheet to workbook
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Surveys');
+
+  // Generate Excel file buffer
+  const excelBuffer = XLSX.write(workbook, {
+    type: 'base64',
+    bookType: 'xlsx',
+  });
 
   // Save to file system
   const filename = `hostel_surveys_supabase_${Date.now()}.xlsx`;
   const fileUri = `${FileSystem.documentDirectory}${filename}`;
 
-  await FileSystem.writeAsStringAsync(fileUri, base64, {
+  await FileSystem.writeAsStringAsync(fileUri, excelBuffer, {
     encoding: FileSystem.EncodingType.Base64,
   });
 

@@ -4,7 +4,20 @@ import ExcelJS from 'exceljs';
 import { Buffer } from 'buffer';
 import { Survey } from '../types/survey';
 
+// Helper function to delay execution (prevents stack overflow)
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const exportSurveysToExcel = async (surveys: Survey[]): Promise<string> => {
+  try {
+    return await exportWithExcelJS(surveys);
+  } catch (error) {
+    console.error('ExcelJS export failed:', error);
+    // If ExcelJS fails, throw error with helpful message
+    throw new Error('Failed to export with embedded images. Please try again or contact support.');
+  }
+};
+
+const exportWithExcelJS = async (surveys: Survey[]): Promise<string> => {
   // Create a new workbook
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Surveys');
@@ -38,12 +51,12 @@ export const exportSurveysToExcel = async (surveys: Survey[]): Promise<string> =
   headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
   headerRow.height = 25;
 
-  // Process each survey and add images
+  // Process each survey sequentially to avoid stack overflow
   for (let i = 0; i < surveys.length; i++) {
     const survey = surveys[i];
     const rowNumber = i + 2; // +2 because row 1 is header
 
-    // Add data row
+    // Add data row first
     worksheet.addRow({
       hostelName: survey.hostelName,
       date: survey.date,
@@ -61,9 +74,14 @@ export const exportSurveysToExcel = async (surveys: Survey[]): Promise<string> =
       createdAt: survey.createdAt || '',
     });
 
-    // Embed image if available
+    // Process image separately with delay to prevent stack overflow
     if (survey.photoPath) {
       try {
+        // Add small delay between image processing
+        if (i > 0) {
+          await delay(50); // 50ms delay between images
+        }
+
         const fileInfo = await FileSystem.getInfoAsync(survey.photoPath);
         if (fileInfo.exists) {
           // Read image as base64
@@ -71,8 +89,20 @@ export const exportSurveysToExcel = async (surveys: Survey[]): Promise<string> =
             encoding: FileSystem.EncodingType.Base64,
           });
 
-          // Convert base64 to buffer
-          const imageBuffer = Buffer.from(imageBase64, 'base64') as any;
+          // Convert base64 to buffer - use Uint8Array instead of Buffer if needed
+          let imageBuffer: Uint8Array;
+          try {
+            // Try using Buffer first
+            imageBuffer = Buffer.from(imageBase64, 'base64') as any;
+          } catch (bufferError) {
+            // Fallback: convert base64 string to Uint8Array manually
+            const binaryString = atob(imageBase64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let j = 0; j < binaryString.length; j++) {
+              bytes[j] = binaryString.charCodeAt(j);
+            }
+            imageBuffer = bytes;
+          }
 
           // Add image to workbook
           const imageId = workbook.addImage({
@@ -81,10 +111,9 @@ export const exportSurveysToExcel = async (surveys: Survey[]): Promise<string> =
           });
 
           // Get the photo column (column M, index 13)
-          const photoColNumber = 13; // Column M is the 13th column
+          const photoColNumber = 13;
 
           // Insert image in the photo column
-          // Position: column M (index 12, 0-based), row i+1 (0-based)
           worksheet.addImage(imageId, {
             tl: { col: photoColNumber - 1, row: rowNumber - 1 },
             ext: { width: 150, height: 150 },
@@ -93,8 +122,9 @@ export const exportSurveysToExcel = async (surveys: Survey[]): Promise<string> =
           // Adjust row height to accommodate image
           worksheet.getRow(rowNumber).height = 120;
         }
-      } catch (error) {
-        console.error(`Error embedding image for ${survey.hostelName}:`, error);
+      } catch (imageError) {
+        console.error(`Error embedding image for ${survey.hostelName}:`, imageError);
+        // Continue without image if embedding fails
       }
     }
   }
@@ -113,11 +143,34 @@ export const exportSurveysToExcel = async (surveys: Survey[]): Promise<string> =
     }
   });
 
-  // Generate Excel file buffer
-  const buffer = await workbook.xlsx.writeBuffer();
+  // Generate Excel file buffer with timeout protection
+  let buffer: ArrayBuffer;
+  try {
+    // Use Promise.race to add timeout protection
+    const writePromise = workbook.xlsx.writeBuffer();
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Excel generation timeout')), 30000)
+    );
+    
+    buffer = await Promise.race([writePromise, timeoutPromise]);
+  } catch (writeError) {
+    console.error('Error writing Excel buffer:', writeError);
+    throw new Error('Failed to generate Excel file. The file may be too large or contain too many images.');
+  }
 
   // Convert buffer to base64
-  const base64 = Buffer.from(buffer).toString('base64');
+  let base64: string;
+  try {
+    if (buffer instanceof ArrayBuffer) {
+      const uint8Array = new Uint8Array(buffer);
+      base64 = Buffer.from(uint8Array).toString('base64');
+    } else {
+      base64 = Buffer.from(buffer as any).toString('base64');
+    }
+  } catch (base64Error) {
+    console.error('Error converting buffer to base64:', base64Error);
+    throw new Error('Failed to process Excel file data.');
+  }
 
   // Save to file system
   const filename = `hostel_surveys_${Date.now()}.xlsx`;
